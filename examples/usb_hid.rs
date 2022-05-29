@@ -11,7 +11,7 @@ use cortex_m::interrupt::Mutex;
 use embedded_time::rate::Fraction;
 use embedded_time::{Clock, Instant};
 use hal::pac::TIM2;
-use hal::timer::{CounterMs, Event};
+use hal::timer::{CounterUs, Event};
 use panic_rtt_target as _;
 use rtt_target::{rprintln, rtt_init_print};
 use stm32f4xx_hal as hal;
@@ -27,7 +27,7 @@ use usb_device::prelude::*;
 
 static mut EP_MEMORY: [u32; 1024] = [0; 1024];
 
-static GLOBAL_TIMER: Mutex<RefCell<Option<CounterMs<TIM2>>>> = Mutex::new(RefCell::new(None));
+static GLOBAL_TIMER: Mutex<RefCell<Option<CounterUs<TIM2>>>> = Mutex::new(RefCell::new(None));
 static GLOBAL_MILLISECONDS: Mutex<RefCell<u64>> = Mutex::new(RefCell::new(0));
 
 fn now_ms() -> u64 {
@@ -101,7 +101,7 @@ fn main() -> ! {
 
     rprintln!("Testing USB functionality!");
 
-    let mut dp = pac::Peripherals::take().unwrap();
+    let dp = pac::Peripherals::take().unwrap();
 
     let rcc = dp.RCC.constrain();
 
@@ -127,8 +127,8 @@ fn main() -> ! {
 
     let usb_bus = UsbBus::new(usb, unsafe { &mut EP_MEMORY });
 
-    let mut timer = dp.TIM2.counter_ms(&clocks);
-    timer.start(1.millis()).ok();
+    let mut timer = dp.TIM2.counter_us(&clocks);
+    timer.start(1.millis()).unwrap();
     timer.listen(Event::Update);
 
     cortex_m::interrupt::free(|cs| {
@@ -149,7 +149,7 @@ fn main() -> ! {
         .manufacturer("Andy314")
         .product("Test HID")
         .serial_number("TEST123321")
-        .device_class(usbd_serial::USB_CLASS_CDC)
+        .supports_remote_wakeup(false)
         .build();
 
     let mut throttler = Throttler::new();
@@ -163,8 +163,10 @@ fn main() -> ! {
 
         if throttler.should_report() {
             match keyboard.interface().write_report(keys) {
-                Ok(_) => {}
+                Ok(_) => {
+                }
                 Err(UsbHidError::WouldBlock) => {}
+                Err(UsbHidError::Duplicate) => {}
                 Err(e) => {
                     rprintln!("WRITE REPORT ERROR: {:?}", e);
                 }
@@ -174,7 +176,8 @@ fn main() -> ! {
         if throttler.should_tick() {
             match keyboard.interface().tick() {
                 Err(UsbHidError::WouldBlock) => {}
-                Ok(_) => {}
+                Ok(_) => {
+                }
                 Err(e) => {
                     rprintln!("TICK ERROR: {:?}", e);
                 }
