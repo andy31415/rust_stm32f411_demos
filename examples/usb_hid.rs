@@ -163,8 +163,7 @@ fn main() -> ! {
 
         if throttler.should_report() {
             match keyboard.interface().write_report(keys) {
-                Ok(_) => {
-                }
+                Ok(_) => {}
                 Err(UsbHidError::WouldBlock) => {}
                 Err(UsbHidError::Duplicate) => {}
                 Err(e) => {
