@@ -3,6 +3,7 @@
 
 use core::cell::RefCell;
 use core::ops::DerefMut;
+use core::sync::atomic::AtomicU64;
 
 use crate::hal::pac::interrupt;
 use crate::hal::pac::Interrupt;
@@ -28,10 +29,10 @@ use usb_device::prelude::*;
 static mut EP_MEMORY: [u32; 1024] = [0; 1024];
 
 static GLOBAL_TIMER: Mutex<RefCell<Option<CounterUs<TIM2>>>> = Mutex::new(RefCell::new(None));
-static GLOBAL_MILLISECONDS: Mutex<RefCell<u64>> = Mutex::new(RefCell::new(0));
+static GLOBAL_MILLISECONDS: AtomicU64 = AtomicU64::new(0);
 
 fn now_ms() -> u64 {
-    cortex_m::interrupt::free(|cs| *GLOBAL_MILLISECONDS.borrow(cs).borrow())
+    GLOBAL_MILLISECONDS.load(core::sync::atomic::Ordering::Acquire)
 }
 
 struct Throttler {
@@ -76,9 +77,9 @@ impl FakeClock {
 
 #[interrupt]
 fn TIM2() {
-    cortex_m::interrupt::free(|cs| {
-        *GLOBAL_MILLISECONDS.borrow(cs).borrow_mut() += 1;
+    GLOBAL_MILLISECONDS.fetch_add(1, core::sync::atomic::Ordering::Release);
 
+    cortex_m::interrupt::free(|cs| {
         if let Some(ref mut t2) = GLOBAL_TIMER.borrow(cs).borrow_mut().deref_mut() {
             t2.clear_interrupt(Event::Update);
         }
