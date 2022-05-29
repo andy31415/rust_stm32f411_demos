@@ -3,7 +3,7 @@
 
 use core::cell::RefCell;
 use core::ops::DerefMut;
-use core::sync::atomic::AtomicU64;
+use core::sync::atomic::AtomicU32;
 
 use crate::hal::pac::interrupt;
 use crate::hal::pac::Interrupt;
@@ -29,15 +29,15 @@ use usb_device::prelude::*;
 static mut EP_MEMORY: [u32; 1024] = [0; 1024];
 
 static GLOBAL_TIMER: Mutex<RefCell<Option<CounterUs<TIM2>>>> = Mutex::new(RefCell::new(None));
-static GLOBAL_MILLISECONDS: AtomicU64 = AtomicU64::new(0);
+static GLOBAL_MILLISECONDS: AtomicU32 = AtomicU32::new(0);
 
-fn now_ms() -> u64 {
+fn now_ms() -> u32 {
     GLOBAL_MILLISECONDS.load(core::sync::atomic::Ordering::Acquire)
 }
 
 struct Throttler {
-    last_tick: u64,
-    last_report: u64,
+    last_tick: u32,
+    last_report: u32,
 }
 
 impl Throttler {
@@ -87,7 +87,7 @@ fn TIM2() {
 }
 
 impl Clock for FakeClock {
-    type T = u64;
+    type T = u32;
 
     const SCALING_FACTOR: Fraction = Fraction::new(1, 1000);
 
