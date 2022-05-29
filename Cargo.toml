@@ -16,6 +16,7 @@ usb-device = "0.2.8"
 usbd-human-interface-device = "0.2.0"
 stm32-usbd = "0.6.0"
 usbd-serial = "0.1.1"
+embedded-time = "0.12.1"
 
 # this lets you use `cargo fix`!
 [[bin]]

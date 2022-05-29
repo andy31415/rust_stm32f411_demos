@@ -4,8 +4,7 @@
 use panic_rtt_target as _;
 use rtt_target::{rprintln, rtt_init_print};
 use stm32f4xx_hal as hal;
-
-use usb_serial::hal::{pac, prelude::*};
+use crate::hal::{pac, prelude::*};
 
 use cortex_m_rt::entry;
 
