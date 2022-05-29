@@ -1,7 +1,6 @@
 #![no_std]
 #![no_main]
 
-use core::borrow::BorrowMut;
 use core::cell::RefCell;
 use core::ops::DerefMut;
 
@@ -9,19 +8,15 @@ use crate::hal::pac::interrupt;
 use crate::hal::pac::Interrupt;
 use crate::hal::{pac, prelude::*};
 use cortex_m::interrupt::Mutex;
-use embedded_time::clock::Error;
 use embedded_time::rate::Fraction;
 use embedded_time::{Clock, Instant};
 use hal::pac::TIM2;
-use hal::rtc::Rtc;
-use hal::timer::{CounterMs, Event, Timer};
+use hal::timer::{CounterMs, Event};
 use panic_rtt_target as _;
 use rtt_target::{rprintln, rtt_init_print};
 use stm32f4xx_hal as hal;
 
-use usbd_human_interface_device::device::keyboard::{
-    KeyboardLedsReport, NKROBootKeyboardInterface,
-};
+use usbd_human_interface_device::device::keyboard::NKROBootKeyboardInterface;
 use usbd_human_interface_device::page::Keyboard;
 use usbd_human_interface_device::prelude::*;
 
