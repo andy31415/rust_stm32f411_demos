@@ -175,9 +175,8 @@ fn main() -> ! {
 
         if throttler.should_tick() {
             match keyboard.interface().tick() {
+                Ok(_) => {}
                 Err(UsbHidError::WouldBlock) => {}
-                Ok(_) => {
-                }
                 Err(e) => {
                     rprintln!("TICK ERROR: {:?}", e);
                 }
