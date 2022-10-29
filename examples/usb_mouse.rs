@@ -67,16 +67,59 @@ struct SprayOffset {
     y: i32,
 }
 
+const SPEED: u32 = 40;
+const SCALE: f32 = 1.6;
+
 impl SprayOffset {
     const fn new(time_ms: u32, x: i32, y: i32) -> Self {
-        Self { time_ms, x, y }
+        Self {
+            time_ms: time_ms * SPEED,
+            x,
+            y,
+        }
+    }
+
+    fn scaled_x(&self) -> i32 {
+        ((self.x as f32) * SCALE) as i32
+    }
+
+    fn scaled_y(&self) -> i32 {
+        ((self.y as f32) * SCALE) as i32
     }
 }
 
 static AK47_RECOIL: &'static [SprayOffset] = &[
-    SprayOffset::new(0, 0, 0),
-    SprayOffset::new(1000, 200, 200),
-    SprayOffset::new(2000, 400, 0),
+    SprayOffset::new(10, 0, 31),     // 29
+    SprayOffset::new(18, -6, 80),    // 28
+    SprayOffset::new(24, -3, 138),   // 27
+    SprayOffset::new(30, 11, 210),   // 26
+    SprayOffset::new(35, 32, 273),   // 25
+    SprayOffset::new(39, 50, 320),   // 24
+    SprayOffset::new(43, 47, 346),   // 23
+    SprayOffset::new(47, 0, 357),    // 22
+    SprayOffset::new(47, 0, 357),    // 21
+    SprayOffset::new(51, -62, 359),  // 20
+    SprayOffset::new(54, -100, 369), // 19
+    SprayOffset::new(57, -119, 365), // 18
+    SprayOffset::new(61, -137, 365), // 17
+    SprayOffset::new(64, -155, 366), // 16
+    SprayOffset::new(68, -163, 371), // 15
+    SprayOffset::new(71, -141, 381), // 14
+    SprayOffset::new(75, -85, 395),  // 13
+    SprayOffset::new(78, -47, 397),  // 12
+    SprayOffset::new(81, -12, 404),  // 11
+    SprayOffset::new(85, 35, 404),   // 10
+    SprayOffset::new(88, 69, 397),   // 9
+    SprayOffset::new(91, 85, 399),   // 8
+    SprayOffset::new(96, 82, 403),   // 7
+    SprayOffset::new(99, 74, 408),   // 6
+    SprayOffset::new(103, 72, 412),  // 5
+    SprayOffset::new(108, 75, 419),  // 4
+    SprayOffset::new(112, 83, 424),  // 3
+    SprayOffset::new(118, 70, 423),  // 2
+    SprayOffset::new(126, 8, 409),   // 1
+    SprayOffset::new(134, -63, 399), // 0
+    SprayOffset::new(144, -116, 379),
 ];
 
 #[derive(Debug, PartialEq, Default)]
@@ -104,7 +147,7 @@ fn clamped_i8(value: i32) -> i8 {
     if value < i8::MIN as i32 {
         return i8::MIN;
     }
-    if value > i8::MAX as i32{
+    if value > i8::MAX as i32 {
         return i8::MAX;
     }
 
@@ -160,20 +203,21 @@ impl<'a, ButtonPin: InputPin> SprayControl<'a, ButtonPin> {
             let offset_ms = (delta_ms - prev.time_ms) as i32;
             let total_ms = (next.time_ms - prev.time_ms) as i32;
 
-            let target_x = (prev.x * (total_ms - offset_ms) + next.x * offset_ms) / total_ms;
-            let target_y = (prev.y * (total_ms - offset_ms) + next.y * offset_ms) / total_ms;
+            let target_x =
+                (prev.scaled_x() * (total_ms - offset_ms) + next.scaled_x() * offset_ms) / total_ms;
+            let target_y =
+                (prev.scaled_y() * (total_ms - offset_ms) + next.scaled_y() * offset_ms) / total_ms;
 
             // Figure out how much to move. Note that we may need to clamp down on the movement
             let delta_x = target_x - self.current_position.x;
             let delta_y = target_y - self.current_position.y;
-            
+
             let delta_x = clamped_i8(delta_x);
             let delta_y = clamped_i8(delta_y);
-            
-            
+
             // ready to propose a movement
             self.current_position.offset(delta_x, delta_y);
-            return BootMouseReport{
+            return BootMouseReport {
                 x: delta_x,
                 y: delta_y,
                 ..Default::default()
