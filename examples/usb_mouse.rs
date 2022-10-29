@@ -134,14 +134,12 @@ fn main() -> ! {
     let mut throttler = Throttler::new();
 
     loop {
-
         let report = if pin.is_low() {
             BootMouseReport::default()
         } else {
             BootMouseReport {
-                buttons: 0,
                 x: 10,
-                y: 0,
+                ..Default::default()
             }
         };
 
@@ -155,7 +153,7 @@ fn main() -> ! {
                 }
             }
         }
-        
+
         // no data to read, just dispatch as needed
         if usb_dev.poll(&mut [&mut mouse]) {}
     }

@@ -1,10 +1,10 @@
 #![no_std]
 #![no_main]
 
+use crate::hal::{pac, prelude::*};
 use panic_rtt_target as _;
 use rtt_target::{rprintln, rtt_init_print};
 use stm32f4xx_hal as hal;
-use crate::hal::{pac, prelude::*};
 
 use cortex_m_rt::entry;
 
@@ -60,14 +60,14 @@ fn main() -> ! {
 
         match serial.read(&mut buf) {
             Ok(count) if count > 0 => {
-               match core::str::from_utf8(&buf[0..count]) {
-                 Err(e) => {
-                   rprintln!("String is not a valid UTF8: {}", e);
-                 }
-                 Ok(s) => {
-                   rprintln!("Received: {}", s);
-                 }
-               }
+                match core::str::from_utf8(&buf[0..count]) {
+                    Err(e) => {
+                        rprintln!("String is not a valid UTF8: {}", e);
+                    }
+                    Ok(s) => {
+                        rprintln!("Received: {}", s);
+                    }
+                }
 
                 // Echo back in upper case
                 for c in buf[0..count].iter_mut() {

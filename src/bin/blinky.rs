@@ -29,12 +29,12 @@ fn main() -> ! {
     loop {
         rprintln!("Blink loop...");
         for _ in 1..6 {
-          delay.delay_ms(200u32);
-          led.toggle();
+            delay.delay_ms(200u32);
+            led.toggle();
         }
         for _ in 1..6 {
-          delay.delay_ms(1000u32);
-          led.toggle();
+            delay.delay_ms(1000u32);
+            led.toggle();
         }
     }
 }
