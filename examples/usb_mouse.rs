@@ -57,29 +57,73 @@ impl Throttler {
     }
 }
 
-
-struct SprayControl<ButtonPin: InputPin> {
-    button: ButtonPin,
-    spray_start_ms: Option<u32>,
+/// Defines a specific X/Y location of a mouse relative to the
+/// starting point
+#[derive(Debug, PartialEq)]
+struct SprayOffset {
+    time_ms: u32,
+    /// when this position should be reached
+    x: i32,
+    y: i32,
 }
 
-impl<'a, ButtonPin: InputPin> SprayControl<ButtonPin> {
+impl SprayOffset {
+    const fn new(time_ms: u32, x: i32, y: i32) -> Self {
+        Self { time_ms, x, y }
+    }
+}
 
-    fn new(button: ButtonPin) -> Self {
+static AK47_RECOIL: &'static [SprayOffset] = &[
+    SprayOffset::new(0, 0, 0),
+    SprayOffset::new(1000, 200, 200),
+    SprayOffset::new(2000, 400, 0),
+];
+
+#[derive(Debug, PartialEq, Default)]
+struct MousePosition {
+    x: i32,
+    y: i32,
+}
+
+impl MousePosition {
+    fn offset(&mut self, delta_x: i8, delta_y: i8) {
+        self.x += delta_x as i32;
+        self.y += delta_y as i32;
+    }
+}
+
+/// Manages spray control for a specific variable
+struct SprayControl<'a, ButtonPin: InputPin> {
+    button: ButtonPin,
+    recoil_pattern: &'a [SprayOffset],
+    spray_start_ms: Option<u32>,
+    current_position: MousePosition,
+}
+
+fn clamped_i8(value: i32) -> i8 {
+    if value < i8::MIN as i32 {
+        return i8::MIN;
+    }
+    if value > i8::MAX as i32{
+        return i8::MAX;
+    }
+
+    return value as i8;
+}
+
+impl<'a, ButtonPin: InputPin> SprayControl<'a, ButtonPin> {
+    fn new(button: ButtonPin, recoil_pattern: &'a [SprayOffset]) -> Self {
         Self {
             button,
+            recoil_pattern,
             spray_start_ms: None,
+            current_position: MousePosition::default(),
         }
     }
 
     fn report(&mut self) -> BootMouseReport {
         match self.button.is_high() {
-            Ok(true) => {
-                BootMouseReport {
-                    buttons: 0x01, // left click
-                    ..Default::default()
-                }
-            }
+            Ok(true) => self.spray_report(),
             Ok(false) => {
                 self.spray_start_ms = None;
                 BootMouseReport::default()
@@ -90,10 +134,56 @@ impl<'a, ButtonPin: InputPin> SprayControl<ButtonPin> {
             }
         }
     }
-    
+
+    fn spray_report(&mut self) -> BootMouseReport {
+        let delta_ms = match self.spray_start_ms {
+            None => {
+                // start a new spray, at position 0
+                self.spray_start_ms = Some(now_ms());
+                self.current_position = MousePosition::default();
+                0
+            }
+            Some(time_ms) => now_ms() - time_ms,
+        };
+
+        // Figure out where we should be compared to where we are
+        for (prev, next) in self
+            .recoil_pattern
+            .iter()
+            .zip(self.recoil_pattern.iter().skip(1))
+        {
+            if (delta_ms < prev.time_ms) || (delta_ms > next.time_ms) {
+                continue;
+            }
+            // Figure out where we should be and adjust x and y locations accordingly.
+            // Note that we may not be able to reach it, so we may need to clamp
+            let offset_ms = (delta_ms - prev.time_ms) as i32;
+            let total_ms = (next.time_ms - prev.time_ms) as i32;
+
+            let target_x = (prev.x * (total_ms - offset_ms) + next.x * offset_ms) / total_ms;
+            let target_y = (prev.y * (total_ms - offset_ms) + next.y * offset_ms) / total_ms;
+
+            // Figure out how much to move. Note that we may need to clamp down on the movement
+            let delta_x = target_x - self.current_position.x;
+            let delta_y = target_y - self.current_position.y;
+            
+            let delta_x = clamped_i8(delta_x);
+            let delta_y = clamped_i8(delta_y);
+            
+            
+            // ready to propose a movement
+            self.current_position.offset(delta_x, delta_y);
+            return BootMouseReport{
+                x: delta_x,
+                y: delta_y,
+                ..Default::default()
+            };
+        }
+
+        // nothing to do: no proper position
+        BootMouseReport::default()
+    }
 }
-
-
 
 #[interrupt]
 fn TIM2() {
@@ -161,7 +251,7 @@ fn main() -> ! {
 
     let mut throttler = Throttler::new();
 
-    let mut spray_control = SprayControl::new(gpioa.pa0.into_input());
+    let mut spray_control = SprayControl::new(gpioa.pa0.into_input(), AK47_RECOIL);
 
     loop {
         if throttler.should_report() {
