@@ -9,6 +9,7 @@ use crate::hal::pac::interrupt;
 use crate::hal::pac::Interrupt;
 use crate::hal::{pac, prelude::*};
 use cortex_m::interrupt::Mutex;
+use hal::hal::digital::v2::InputPin;
 use hal::pac::TIM2;
 use hal::timer::{CounterUs, Event};
 use panic_rtt_target as _;
@@ -34,25 +35,16 @@ fn now_ms() -> u32 {
 }
 
 struct Throttler {
-    last_tick: u32,
     last_report: u32,
 }
 
+/// Figures out when USB reports should be sent to a
+/// USB.
 impl Throttler {
     fn new() -> Self {
         Self {
-            last_tick: now_ms(),
             last_report: now_ms(),
         }
-    }
-
-    fn should_tick(&mut self) -> bool {
-        let c = now_ms();
-        if c < self.last_tick + 1 {
-            return false;
-        }
-        self.last_tick = c;
-        true
     }
 
     fn should_report(&mut self) -> bool {
@@ -64,6 +56,44 @@ impl Throttler {
         true
     }
 }
+
+
+struct SprayControl<ButtonPin: InputPin> {
+    button: ButtonPin,
+    spray_start_ms: Option<u32>,
+}
+
+impl<'a, ButtonPin: InputPin> SprayControl<ButtonPin> {
+
+    fn new(button: ButtonPin) -> Self {
+        Self {
+            button,
+            spray_start_ms: None,
+        }
+    }
+
+    fn report(&mut self) -> BootMouseReport {
+        match self.button.is_high() {
+            Ok(true) => {
+                BootMouseReport {
+                    buttons: 0x01, // left click
+                    ..Default::default()
+                }
+            }
+            Ok(false) => {
+                self.spray_start_ms = None;
+                BootMouseReport::default()
+            }
+            Err(_) => {
+                rprintln!("Failure to check pin state!");
+                BootMouseReport::default()
+            }
+        }
+    }
+    
+}
+
+
 
 #[interrupt]
 fn TIM2() {
@@ -104,8 +134,6 @@ fn main() -> ! {
         hclk: clocks.hclk(),
     };
 
-    let pin = gpioa.pa0.into_input();
-
     let usb_bus = UsbBus::new(usb, unsafe { &mut EP_MEMORY });
 
     let mut timer = dp.TIM2.counter_us(&clocks);
@@ -133,18 +161,11 @@ fn main() -> ! {
 
     let mut throttler = Throttler::new();
 
-    loop {
-        let report = if pin.is_low() {
-            BootMouseReport::default()
-        } else {
-            BootMouseReport {
-                x: 10,
-                ..Default::default()
-            }
-        };
+    let mut spray_control = SprayControl::new(gpioa.pa0.into_input());
 
+    loop {
         if throttler.should_report() {
-            match mouse.interface().write_report(&report) {
+            match mouse.interface().write_report(&spray_control.report()) {
                 Ok(_) => {}
                 Err(UsbHidError::WouldBlock) => {}
                 Err(UsbHidError::Duplicate) => {}
