@@ -9,8 +9,6 @@ use crate::hal::pac::interrupt;
 use crate::hal::pac::Interrupt;
 use crate::hal::{pac, prelude::*};
 use cortex_m::interrupt::Mutex;
-use embedded_time::rate::Fraction;
-use embedded_time::{Clock, Instant};
 use hal::pac::TIM2;
 use hal::timer::{CounterUs, Event};
 use panic_rtt_target as _;
@@ -67,14 +65,6 @@ impl Throttler {
     }
 }
 
-struct FakeClock {}
-
-impl FakeClock {
-    fn new() -> Self {
-        Self {}
-    }
-}
-
 #[interrupt]
 fn TIM2() {
     GLOBAL_MILLISECONDS.fetch_add(1, core::sync::atomic::Ordering::Release);
@@ -84,16 +74,6 @@ fn TIM2() {
             t2.clear_interrupt(Event::Update);
         }
     });
-}
-
-impl Clock for FakeClock {
-    type T = u32;
-
-    const SCALING_FACTOR: Fraction = Fraction::new(1, 1000);
-
-    fn try_now(&self) -> Result<embedded_time::Instant<Self>, embedded_time::clock::Error> {
-        Ok(Instant::<FakeClock>::new(now_ms()))
-    }
 }
 
 #[entry]
@@ -140,10 +120,8 @@ fn main() -> ! {
         cortex_m::peripheral::NVIC::unmask(Interrupt::TIM2);
     }
 
-    let clock = FakeClock::new();
-
     let mut keyboard = UsbHidClassBuilder::new()
-        .add_interface(NKROBootKeyboardInterface::default_config(&clock))
+        .add_interface(NKROBootKeyboardInterface::default_config())
         .build(&usb_bus);
 
     let mut usb_dev = UsbDeviceBuilder::new(&usb_bus, UsbVidPid(0x16c0, 0x27dd))
