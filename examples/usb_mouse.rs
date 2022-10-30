@@ -2,7 +2,7 @@
 #![no_main]
 
 use core::cell::RefCell;
-use core::ops::DerefMut;
+use core::ops::{Add, Sub, Mul, Div, DerefMut};
 use core::sync::atomic::AtomicU32;
 
 use crate::hal::pac::interrupt;
@@ -57,14 +57,65 @@ impl Throttler {
     }
 }
 
+/// A position in space
+#[derive(Debug, Default, PartialEq, PartialOrd, Copy, Clone)]
+struct Point {
+    x: f32,
+    y: f32,
+}
+
+impl Add for Point {
+    type Output = Point;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        Self{x: self.x + rhs.x, y: self.y+rhs.y}
+    }
+}
+
+impl Sub for Point {
+    type Output = Point;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        Self{x: self.x - rhs.x, y: self.y-rhs.y}
+    }
+}
+
+impl Mul<f32> for Point {
+    type Output = Point;
+
+    fn mul(self, rhs: f32) -> Self::Output {
+        Self{x: self.x*rhs, y: self.y*rhs}
+    }
+}
+
+impl Div<f32> for Point {
+    type Output = Point;
+
+    fn div(self, rhs: f32) -> Self::Output {
+        Self{x: self.x/rhs, y: self.y/rhs}
+    }
+}
+
+
+/// Returns a value [start, end] depending on
+/// the given amount [0, 1]
+fn interpolate(start: Point, end: Point, amount: f32) -> Point {
+    assert!(amount >= 0.);
+    assert!(amount <= 1.);
+    start + (end - start)*amount
+}
+
+
+
 /// Defines a specific X/Y location of a mouse relative to the
 /// starting point
 #[derive(Debug, PartialEq)]
 struct SprayOffset {
-    time_ms: u32,
     /// when this position should be reached
-    x: i32,
-    y: i32,
+    time_ms: u32,
+    
+    /// Where we should be at the given point in time
+    position: Point,
 }
 
 const SPEED: u32 = 40;
@@ -74,21 +125,19 @@ impl SprayOffset {
     const fn new(time_ms: u32, x: i32, y: i32) -> Self {
         Self {
             time_ms: time_ms * SPEED,
-            x,
-            y,
+            position: Point{x: x as f32, y: y as f32}
         }
     }
-
-    fn scaled_x(&self) -> i32 {
-        ((self.x as f32) * SCALE) as i32
-    }
-
-    fn scaled_y(&self) -> i32 {
-        ((self.y as f32) * SCALE) as i32
+    
+    // Awkward methods because floating point operations cannot
+    // be used in CONST functions (https://github.com/rust-lang/rust/issues/57241)
+    fn scaled_position(&self) -> Point {
+        self.position * SCALE
     }
 }
 
 static AK47_RECOIL: &'static [SprayOffset] = &[
+    SprayOffset::new(0, 0, 0),       // START
     SprayOffset::new(10, 0, 31),     // 29
     SprayOffset::new(18, -6, 80),    // 28
     SprayOffset::new(24, -3, 138),   // 27
@@ -122,32 +171,19 @@ static AK47_RECOIL: &'static [SprayOffset] = &[
     SprayOffset::new(144, -116, 379),
 ];
 
-#[derive(Debug, PartialEq, Default)]
-struct MousePosition {
-    x: i32,
-    y: i32,
-}
-
-impl MousePosition {
-    fn offset(&mut self, delta_x: i8, delta_y: i8) {
-        self.x += delta_x as i32;
-        self.y += delta_y as i32;
-    }
-}
-
 /// Manages spray control for a specific variable
 struct SprayControl<'a, ButtonPin: InputPin> {
     button: ButtonPin,
     recoil_pattern: &'a [SprayOffset],
     spray_start_ms: Option<u32>,
-    current_position: MousePosition,
+    current_position: Point,
 }
 
-fn clamped_i8(value: i32) -> i8 {
-    if value < i8::MIN as i32 {
+fn clamped_i8(value: f32) -> i8 {
+    if value < i8::MIN as f32 {
         return i8::MIN;
     }
-    if value > i8::MAX as i32 {
+    if value > i8::MAX as f32 {
         return i8::MAX;
     }
 
@@ -160,7 +196,7 @@ impl<'a, ButtonPin: InputPin> SprayControl<'a, ButtonPin> {
             button,
             recoil_pattern,
             spray_start_ms: None,
-            current_position: MousePosition::default(),
+            current_position: Point::default(),
         }
     }
 
@@ -178,18 +214,17 @@ impl<'a, ButtonPin: InputPin> SprayControl<'a, ButtonPin> {
         }
     }
 
-    fn spray_report(&mut self) -> BootMouseReport {
+    fn expected_position(&mut self) -> Point {
         let delta_ms = match self.spray_start_ms {
             None => {
                 // start a new spray, at position 0
                 self.spray_start_ms = Some(now_ms());
-                self.current_position = MousePosition::default();
+                self.current_position = Point::default();
                 0
             }
             Some(time_ms) => now_ms() - time_ms,
         };
 
-        // Figure out where we should be compared to where we are
         for (prev, next) in self
             .recoil_pattern
             .iter()
@@ -198,34 +233,36 @@ impl<'a, ButtonPin: InputPin> SprayControl<'a, ButtonPin> {
             if (delta_ms < prev.time_ms) || (delta_ms > next.time_ms) {
                 continue;
             }
-            // Figure out where we should be and adjust x and y locations accordingly.
-            // Note that we may not be able to reach it, so we may need to clamp
-            let offset_ms = (delta_ms - prev.time_ms) as i32;
-            let total_ms = (next.time_ms - prev.time_ms) as i32;
 
-            let target_x =
-                (prev.scaled_x() * (total_ms - offset_ms) + next.scaled_x() * offset_ms) / total_ms;
-            let target_y =
-                (prev.scaled_y() * (total_ms - offset_ms) + next.scaled_y() * offset_ms) / total_ms;
+            rprintln!("{:?} to {:?}", prev, next);
+            
+            let amount = (delta_ms - prev.time_ms) as f32 / (next.time_ms - prev.time_ms) as f32;
 
-            // Figure out how much to move. Note that we may need to clamp down on the movement
-            let delta_x = target_x - self.current_position.x;
-            let delta_y = target_y - self.current_position.y;
-
-            let delta_x = clamped_i8(delta_x);
-            let delta_y = clamped_i8(delta_y);
-
-            // ready to propose a movement
-            self.current_position.offset(delta_x, delta_y);
-            return BootMouseReport {
-                x: delta_x,
-                y: delta_y,
-                ..Default::default()
-            };
+            return interpolate(prev.scaled_position(), next.scaled_position(), amount);
         }
 
-        // nothing to do: no proper position
-        BootMouseReport::default()
+        match self.recoil_pattern {
+           [] => Point::default(),
+           [.., last] => last.scaled_position()
+        }
+    }
+
+    fn spray_report(&mut self) -> BootMouseReport {
+        let expected = self.expected_position();
+        let move_amount = expected - self.current_position;
+
+        let delta_x = clamped_i8(move_amount.x);
+        let delta_y = clamped_i8(move_amount.y);
+
+        // ready to propose a movement
+        self.current_position.x += delta_x as f32;
+        self.current_position.y += delta_y as f32;
+
+        return BootMouseReport {
+            x: delta_x,
+            y: delta_y,
+            ..Default::default()
+        };
     }
 }
 
@@ -244,7 +281,7 @@ fn TIM2() {
 fn main() -> ! {
     rtt_init_print!();
 
-    rprintln!("Testing USB functionality!");
+    rprintln!("Preparing to start...");
 
     let dp = pac::Peripherals::take().unwrap();
 
@@ -296,6 +333,8 @@ fn main() -> ! {
     let mut throttler = Throttler::new();
 
     let mut spray_control = SprayControl::new(gpioa.pa0.into_input(), AK47_RECOIL);
+
+    rprintln!("Recoil control ready!");
 
     loop {
         if throttler.should_report() {
