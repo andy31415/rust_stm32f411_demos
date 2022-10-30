@@ -201,7 +201,7 @@ impl<'a, ButtonPin: InputPin> SprayControl<'a, ButtonPin> {
     }
 
     fn report(&mut self) -> BootMouseReport {
-        match self.button.is_high() {
+        match self.button.is_low() {
             Ok(true) => self.spray_report(),
             Ok(false) => {
                 self.spray_start_ms = None;
@@ -234,10 +234,7 @@ impl<'a, ButtonPin: InputPin> SprayControl<'a, ButtonPin> {
                 continue;
             }
 
-            rprintln!("{:?} to {:?}", prev, next);
-            
             let amount = (delta_ms - prev.time_ms) as f32 / (next.time_ms - prev.time_ms) as f32;
-
             return interpolate(prev.scaled_position(), next.scaled_position(), amount);
         }
 
@@ -332,7 +329,7 @@ fn main() -> ! {
 
     let mut throttler = Throttler::new();
 
-    let mut spray_control = SprayControl::new(gpioa.pa0.into_input(), AK47_RECOIL);
+    let mut spray_control = SprayControl::new(gpioa.pa0.into_pull_up_input(), AK47_RECOIL);
 
     rprintln!("Recoil control ready!");
 
