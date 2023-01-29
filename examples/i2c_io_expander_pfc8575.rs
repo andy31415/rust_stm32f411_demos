@@ -10,9 +10,37 @@ use crate::hal::{pac, prelude::*};
 
 use cortex_m_rt::entry;
 
+use pcf857x::OutputPin;
 use pcf857x::Pcf8575;
 
 use crate::hal::i2c::I2c;
+
+struct ToggleableOutputPin<O: OutputPin> {
+    pin: O,
+    is_high: bool,
+}
+
+impl<O: OutputPin> ToggleableOutputPin<O> {
+    fn new(mut pin: O, is_high: bool) -> Result<Self, O::Error> {
+        if is_high {
+            pin.set_high()?
+        } else {
+            pin.set_low()?
+        }
+        Ok(Self { pin, is_high })
+    }
+
+    fn toggle(&mut self) -> Result<(), O::Error> {
+        self.is_high = !self.is_high;
+
+        if self.is_high {
+            self.pin.set_high()?;
+        } else {
+            self.pin.set_low()?;
+        }
+        Ok(())
+    }
+}
 
 #[entry]
 fn main() -> ! {
@@ -30,43 +58,35 @@ fn main() -> ! {
     let gpioc = dp.GPIOC.split();
     let mut led = gpioc.pc13.into_push_pull_output();
     let mut delay = cp.SYST.delay(&clocks);
-    
+
     let gpiob = dp.GPIOB.split();
     let sda = gpiob.pb7;
     let scl = gpiob.pb6;
-    
+
     let i2c = I2c::new(
-        dp.I2C1, 
-        (scl, sda), 
-        Mode::Standard { frequency: 100.kHz() },
-        &clocks
+        dp.I2C1,
+        (scl, sda),
+        Mode::Standard {
+            frequency: 100.kHz(),
+        },
+        &clocks,
     );
-    
-    let mut expander = Pcf8575::new(i2c, pcf857x::SlaveAddr::Default);
-    
+
+    let expander = Pcf8575::new(i2c, pcf857x::SlaveAddr::Default);
+    let mut led2 = ToggleableOutputPin::new(expander.split().p3, false).unwrap();
+
     loop {
         rprintln!("Blink loop...");
-        for _ in 1..3 {
+        for _ in 1..6 {
             delay.delay_ms(200u32);
-
             led.toggle();
-            expander.set(0xFFFF).unwrap();
-
-            delay.delay_ms(200u32);
-
-            led.toggle();
-            expander.set(0).unwrap();
+            led2.toggle().unwrap();
         }
-        for _ in 1..3 {
+        for _ in 1..6 {
             delay.delay_ms(1000u32);
 
             led.toggle();
-            expander.set(0xFFFF).unwrap();
-
-            delay.delay_ms(1000u32);
-
-            led.toggle();
-            expander.set(0).unwrap();
+            led2.toggle().unwrap();
         }
     }
 }

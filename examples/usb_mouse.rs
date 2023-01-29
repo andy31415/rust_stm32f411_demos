@@ -2,7 +2,7 @@
 #![no_main]
 
 use core::cell::RefCell;
-use core::ops::{Add, Sub, Mul, Div, DerefMut};
+use core::ops::{Add, DerefMut, Div, Mul, Sub};
 use core::sync::atomic::AtomicU32;
 
 use crate::hal::pac::interrupt;
@@ -68,7 +68,10 @@ impl Add for Point {
     type Output = Point;
 
     fn add(self, rhs: Self) -> Self::Output {
-        Self{x: self.x + rhs.x, y: self.y+rhs.y}
+        Self {
+            x: self.x + rhs.x,
+            y: self.y + rhs.y,
+        }
     }
 }
 
@@ -76,7 +79,10 @@ impl Sub for Point {
     type Output = Point;
 
     fn sub(self, rhs: Self) -> Self::Output {
-        Self{x: self.x - rhs.x, y: self.y-rhs.y}
+        Self {
+            x: self.x - rhs.x,
+            y: self.y - rhs.y,
+        }
     }
 }
 
@@ -84,7 +90,10 @@ impl Mul<f32> for Point {
     type Output = Point;
 
     fn mul(self, rhs: f32) -> Self::Output {
-        Self{x: self.x*rhs, y: self.y*rhs}
+        Self {
+            x: self.x * rhs,
+            y: self.y * rhs,
+        }
     }
 }
 
@@ -92,20 +101,20 @@ impl Div<f32> for Point {
     type Output = Point;
 
     fn div(self, rhs: f32) -> Self::Output {
-        Self{x: self.x/rhs, y: self.y/rhs}
+        Self {
+            x: self.x / rhs,
+            y: self.y / rhs,
+        }
     }
 }
-
 
 /// Returns a value [start, end] depending on
 /// the given amount [0, 1]
 fn interpolate(start: Point, end: Point, amount: f32) -> Point {
     assert!(amount >= 0.);
     assert!(amount <= 1.);
-    start + (end - start)*amount
+    start + (end - start) * amount
 }
-
-
 
 /// Defines a specific X/Y location of a mouse relative to the
 /// starting point
@@ -113,7 +122,7 @@ fn interpolate(start: Point, end: Point, amount: f32) -> Point {
 struct SprayOffset {
     /// when this position should be reached
     time_ms: u32,
-    
+
     /// Where we should be at the given point in time
     position: Point,
 }
@@ -125,10 +134,13 @@ impl SprayOffset {
     const fn new(time_ms: u32, x: i32, y: i32) -> Self {
         Self {
             time_ms: time_ms * SPEED,
-            position: Point{x: x as f32, y: y as f32}
+            position: Point {
+                x: x as f32,
+                y: y as f32,
+            },
         }
     }
-    
+
     // Awkward methods because floating point operations cannot
     // be used in CONST functions (https://github.com/rust-lang/rust/issues/57241)
     fn scaled_position(&self) -> Point {
@@ -239,8 +251,8 @@ impl<'a, ButtonPin: InputPin> SprayControl<'a, ButtonPin> {
         }
 
         match self.recoil_pattern {
-           [] => Point::default(),
-           [.., last] => last.scaled_position()
+            [] => Point::default(),
+            [.., last] => last.scaled_position(),
         }
     }
 
